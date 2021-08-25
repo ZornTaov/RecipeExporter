@@ -1,0 +1,16 @@
+[
+{
+  "modid": "recipeexporter",
+  "name": "Recipe Exporter",
+  "description": "Export MOST recipes to json for data analysis.",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["Zorn Taov"],
+  "credits": "JEI for exposing recipes.... sorta.",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}
+]
