@@ -1,7 +1,5 @@
 package org.zornco.recipeexporter;
 
-import com.github.cliftonlabs.json_simple.JsonException;
-import com.github.cliftonlabs.json_simple.Jsoner;
 import gregtech.api.GTValues;
 import gregtech.api.recipes.CountableIngredient;
 import gregtech.api.recipes.Recipe;
@@ -10,6 +8,7 @@ import mezz.jei.api.recipe.IRecipeCategory;
 import mezz.jei.plugins.jei.JEIInternalPlugin;
 import mezz.jei.recipes.RecipeRegistry;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
@@ -18,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import com.github.cliftonlabs.json_simple.JsonArray;
@@ -31,6 +30,10 @@ public class RecipeExporter {
     public static final String VERSION = "1.0";
 
     private static Logger logger;
+
+    private static String FluidStackToString(FluidStack fluid) {
+        return fluid.amount + "x" + fluid.getLocalizedName();
+    }
 
     @EventHandler
     public void preInit(FMLPreInitializationEvent event) {
@@ -49,21 +52,16 @@ public class RecipeExporter {
 
 
                 JsonArray categories = new JsonArray();
-                // get gregtech recipe stuff
+                // get GregTech recipe stuff
                 for (RecipeMap<?> recipeMap: RecipeMap.getRecipeMaps()) {
                     JsonObject cat = new JsonObject();
                     cat.put("Name", recipeMap.getLocalizedName());
-                    JsonArray crafter = new JsonArray();
 
                     IRecipeCategory<?> namespace = recipeRegistry.getRecipeCategory(GTValues.MODID + ":" + recipeMap.getUnlocalizedName());
                     if (namespace != null) {
                         List<Object> catalysts = recipeRegistry.getRecipeCatalysts(namespace,true);
-                        cat.put("Catalysts", catalysts.stream().map(object -> {
-                            if (object instanceof ItemStack)
-                                return getItemStackAsJson((ItemStack)object);
-                            return object.toString();
-                        }).collect(Collectors.toList()));
-
+                        JsonArray catalystsArray = itemStacksToJson(catalysts);
+                        cat.put("Catalysts", catalystsArray);
                     }
 
                     JsonArray recipes = new JsonArray();
@@ -71,11 +69,9 @@ public class RecipeExporter {
                         JsonObject rec = new JsonObject();
                         rec.put("inputs", GetItems(recipe.getInputs()));
                         rec.put("outputs", recipe.getOutputs().stream().map(this::getItemStackAsJson).collect(Collectors.toList()));
-                        rec.put("chanceOutputs", recipe.getChancedOutputs().keySet().stream()
-                                .map(this::getItemStackAsJson)
-                                .collect(Collectors.toList()));
-                        rec.put("fluidInputs", recipe.getFluidInputs().stream().map(fluid -> {return fluid.amount + "x" + fluid.getLocalizedName();}).collect(Collectors.toList()));
-                        rec.put("fluidOutputs", recipe.getFluidOutputs().stream().map(fluid -> {return fluid.amount + "x" + fluid.getLocalizedName();}).collect(Collectors.toList()));
+                        rec.put("chanceOutputs", itemStacksToJson(recipe.getChancedOutputs().keySet()));
+                        rec.put("fluidInputs", recipe.getFluidInputs().stream().map(RecipeExporter::FluidStackToString).collect(Collectors.toList()));
+                        rec.put("fluidOutputs", recipe.getFluidOutputs().stream().map(RecipeExporter::FluidStackToString).collect(Collectors.toList()));
                         rec.put("powerUsage", recipe.getEUt());
                         rec.put("duration", recipe.getDuration());
                         recipes.add( rec);
@@ -99,7 +95,7 @@ public class RecipeExporter {
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (StackOverflowError e) {
-                logger.error("whoopsie, overflowed");
+                logger.error("whoops, overflowed");
             } finally {
 
                 try {
@@ -108,31 +104,40 @@ public class RecipeExporter {
                         file.close();
                     }
                 } catch (Exception e) {
-                    // TODO Auto-generated catch block
                     e.printStackTrace();
                 }
             }
         }
     }
 
-    private JsonArray GetItems(List<CountableIngredient> ingrediants) {
+    private <T> JsonArray itemStacksToJson(Collection<T> catalysts) {
+        JsonArray catalystsArray = new JsonArray();
+        for (Object catalyst : catalysts) {
+            if (catalyst instanceof ItemStack)
+                catalystsArray.add(getItemStackAsJson((ItemStack)catalyst));
+            else
+                catalystsArray.add(catalyst.toString());
+        }
+        return catalystsArray;
+    }
+
+    private JsonArray GetItems(List<CountableIngredient> ingredients) {
         JsonArray inputsArray = new JsonArray();
-        ingrediants.forEach(items -> {
+        for (CountableIngredient items : ingredients) {
             JsonArray itemsArray = new JsonArray();
-            Arrays.stream(items.getIngredient().getMatchingStacks())
-                .forEach(item -> {
-                    JsonObject itemObj = getItemStackAsJson(item);
-                    itemsArray.add(itemObj);
-                });
+            for (ItemStack item : items.getIngredient().getMatchingStacks()) {
+                JsonObject itemObj = getItemStackAsJson(item);
+                itemsArray.add(itemObj);
+            }
             inputsArray.add(itemsArray);
-        });
+        }
         return inputsArray;
     }
 
     private JsonObject getItemStackAsJson(ItemStack item) {
         JsonObject itemObj = new JsonObject();
         itemObj.put("count", item.getCount());
-        itemObj.put("unlocalizedName", item.getItem().getUnlocalizedName());
+        itemObj.put("unlocalizedName", item.getItem().getTranslationKey());
         itemObj.put("name", item.getDisplayName());
         itemObj.put("damage", item.getItemDamage());
         itemObj.put("nbt", item.serializeNBT().toString());
